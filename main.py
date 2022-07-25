@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import time
 import curses
@@ -14,7 +15,7 @@ UP_KEY_CODE = 259
 DOWN_KEY_CODE = 258
 
 
-def read_controls(canvas):
+def read_controls(canvas, rocket_speed):
     """Read keys pressed and returns tuple witl controls state."""
 
     rows_direction = columns_direction = 0
@@ -28,16 +29,16 @@ def read_controls(canvas):
             break
 
         if pressed_key_code == UP_KEY_CODE:
-            rows_direction = -5
+            rows_direction = -rocket_speed
 
         if pressed_key_code == DOWN_KEY_CODE:
-            rows_direction = 5
+            rows_direction = rocket_speed
 
         if pressed_key_code == RIGHT_KEY_CODE:
-            columns_direction = 5
+            columns_direction = rocket_speed
 
         if pressed_key_code == LEFT_KEY_CODE:
-            columns_direction = -5
+            columns_direction = -rocket_speed
 
         if pressed_key_code == SPACE_KEY_CODE:
             space_pressed = True
@@ -146,11 +147,11 @@ def get_frame_size(text):
     return rows, columns
 
 
-def calculate_rocket_move(canvas, rocket_position, rocket_size, canvas_size):
+def calculate_rocket_move(canvas, rocket_position, rocket_size, canvas_size, rocket_speed):
     rocket_rows_position, rocket_columns_position = rocket_position
     rocket_row_size, rocket_column_size = rocket_size
     rows_number, columns_number = canvas_size
-    rows_direction, columns_direction = read_controls(canvas)
+    rows_direction, columns_direction = read_controls(canvas, rocket_speed)
 
     if columns_direction < 0:
         rocket_columns_position = max(
@@ -177,7 +178,7 @@ def calculate_rocket_move(canvas, rocket_position, rocket_size, canvas_size):
     return rocket_rows_position, rocket_columns_position
 
 
-def draw(canvas):
+def draw(canvas, args):
     with open('rocket_frame_1.txt', 'r') as f:
         rocket_1 = f.read()
 
@@ -192,7 +193,7 @@ def draw(canvas):
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
     stars_coroutines = [
-        blink(canvas, *get_star_params(canvas_size)) for n in range(5)
+        blink(canvas, *get_star_params(canvas_size)) for star in range(args.stars_count)
     ]
     fire_coroutine = fire(canvas, rocket_position, rows_speed=-1)
     while True:
@@ -213,7 +214,8 @@ def draw(canvas):
             canvas,
             rocket_position,
             rocket_size,
-            canvas_size
+            canvas_size,
+            args.rocket_speed
         )
         draw_frame(canvas, rocket_position, rocket)
         canvas.refresh()
@@ -222,5 +224,21 @@ def draw(canvas):
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description='Полетели!'
+    )
+    parser.add_argument(
+        '--rocket_speed',
+        help='Начальная страница',
+        type=int,
+        default=2,
+    )
+    parser.add_argument(
+        '--stars_count',
+        help='Начальная страница',
+        type=int,
+        default=100,
+    )
+    args = parser.parse_args()
     curses.update_lines_cols()
-    curses.wrapper(draw)
+    curses.wrapper(draw, args)
