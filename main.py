@@ -185,12 +185,31 @@ def calculate_rocket_move(canvas, rocket_position, rocket_size, canvas_size, roc
     return rocket_rows_position, rocket_columns_position
 
 
-def draw(canvas, args):
+def get_rocket_frames():
     rocket_frames = []
     for rocket in os.listdir('rocket'):
         with open(f'rocket/{rocket}', 'r') as f:
             rocket_frames.append(f.read())
+    return rocket_frames
 
+
+def rocket_animation(canvas, rocket, rocket_position, rocket_size, canvas_size, rocket_speed):
+    rocket_position = calculate_rocket_move(
+            canvas,
+            rocket_position,
+            rocket_size,
+            canvas_size,
+            rocket_speed
+        )
+    draw_frame(canvas, rocket_position, rocket)
+    canvas.refresh()
+    time.sleep(TIC_TIMEOUT)
+    draw_frame(canvas, rocket_position, rocket, negative=True)
+    return rocket_position
+    
+
+def draw(canvas, args):
+    rocket_frames = get_rocket_frames()
     rocket_size = get_frame_size(rocket_frames[0])
     canvas_size = canvas.getmaxyx()
     canvas.border()
@@ -198,36 +217,36 @@ def draw(canvas, args):
     curses.curs_set(False)
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
-    offset_ticks = random.randint(1, 10)
-    stars_coroutines = [
-        blink(canvas, offset_ticks, *get_star_params(canvas_size)) for star in range(args.stars_count)
-    ]
-    fire_coroutine = fire(canvas, rocket_position, rows_speed=-1)
+    coroutines = [fire(canvas, rocket_position, rows_speed=-1)]
+    for star in range(args.stars_count):  
+        offset_ticks = random.randint(1, 10)   
+        coroutines.append(
+            blink(canvas, offset_ticks, *get_star_params(canvas_size))
+        ) 
+
     while True:
         try:
-            fire_coroutine.send(None)
+            coroutines[0].send(None)
             canvas.refresh()
             time.sleep(TIC_TIMEOUT)
         except StopIteration:
+            coroutines.pop(0)
             break
 
     for rocket in cycle(rocket_frames):
         canvas.border()
-        for coroutine in stars_coroutines.copy():
+        for coroutine in coroutines.copy():
             coroutine.send(None)
             canvas.refresh()
 
-        rocket_position = calculate_rocket_move(
+        rocket_position = rocket_animation(
             canvas,
+            rocket,
             rocket_position,
             rocket_size,
             canvas_size,
             args.rocket_speed
         )
-        draw_frame(canvas, rocket_position, rocket)
-        canvas.refresh()
-        time.sleep(TIC_TIMEOUT)
-        draw_frame(canvas, rocket_position, rocket, negative=True)
 
 
 if __name__ == '__main__':
