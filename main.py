@@ -14,7 +14,7 @@ LEFT_KEY_CODE = 260
 RIGHT_KEY_CODE = 261
 UP_KEY_CODE = 259
 DOWN_KEY_CODE = 258
-CANVAS_FRAME_THICKNESS = 1
+CANVAS_FRAME_THICKNESS = 2
 
 def read_controls(canvas, rocket_speed):
     """Read keys pressed and returns tuple witl controls state."""
@@ -189,11 +189,19 @@ def get_rocket_frames():
     rocket_frames = []
     for rocket in os.listdir('rocket'):
         with open(f'rocket/{rocket}', 'r') as f:
-            rocket_frames.append(f.read())
+            rocket = f.read()
+            rocket_frames.extend((rocket, rocket))
     return rocket_frames
 
 
-def rocket_animation(canvas, rocket, rocket_position, rocket_size, canvas_size, rocket_speed):
+def rocket_animation(
+    canvas,
+    rocket,
+    rocket_position,
+    rocket_size,
+    canvas_size,
+    rocket_speed):
+    
     rocket_position = calculate_rocket_move(
             canvas,
             rocket_position,
@@ -237,7 +245,6 @@ def draw(canvas, args):
         canvas.border()
         for coroutine in coroutines.copy():
             coroutine.send(None)
-            canvas.refresh()
 
         rocket_position = rocket_animation(
             canvas,
