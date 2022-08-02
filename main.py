@@ -1,3 +1,4 @@
+import os
 import argparse
 import asyncio
 import time
@@ -13,7 +14,7 @@ LEFT_KEY_CODE = 260
 RIGHT_KEY_CODE = 261
 UP_KEY_CODE = 259
 DOWN_KEY_CODE = 258
-
+CANVAS_FRAME_THICKNESS = 1
 
 def read_controls(canvas, rocket_speed):
     """Read keys pressed and returns tuple witl controls state."""
@@ -76,8 +77,8 @@ async def fire(canvas, fire_position, rows_speed=-0.3, columns_speed=0):
         column += columns_speed
 
 
-async def blink(canvas, row, column, symbol='*'):
-    for _ in range(random.randint(1, 10)):
+async def blink(canvas, offset_tics, row, column, symbol='*'):
+    for _ in range(offset_tics):
         await asyncio.sleep(0)
     while True:
         canvas.addstr(row, column, symbol, curses.A_DIM)
@@ -99,8 +100,14 @@ async def blink(canvas, row, column, symbol='*'):
 
 def get_star_params(canvas_size):
     rows_number, columns_number = canvas_size
-    x = random.randint(2, columns_number-2)
-    y = random.randint(2, rows_number-2)
+    x = random.randint(
+        CANVAS_FRAME_THICKNESS,
+        columns_number-CANVAS_FRAME_THICKNESS
+    )
+    y = random.randint(
+        CANVAS_FRAME_THICKNESS,
+        rows_number-CANVAS_FRAME_THICKNESS
+    )
     symbol = random.choice(['*', '.', ':', '+'])
     return y, x, symbol
 
@@ -179,21 +186,21 @@ def calculate_rocket_move(canvas, rocket_position, rocket_size, canvas_size, roc
 
 
 def draw(canvas, args):
-    with open('rocket_frame_1.txt', 'r') as f:
-        rocket_1 = f.read()
+    rocket_frames = []
+    for rocket in os.listdir('rocket'):
+        with open(f'rocket/{rocket}', 'r') as f:
+            rocket_frames.append(f.read())
 
-    with open('rocket_frame_2.txt', 'r') as f:
-        rocket_2 = f.read()
-
-    rocket_size = get_frame_size(rocket_1)
+    rocket_size = get_frame_size(rocket_frames[0])
     canvas_size = canvas.getmaxyx()
     canvas.border()
     canvas.nodelay(True)
     curses.curs_set(False)
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
+    offset_ticks = random.randint(1, 10)
     stars_coroutines = [
-        blink(canvas, *get_star_params(canvas_size)) for star in range(args.stars_count)
+        blink(canvas, offset_ticks, *get_star_params(canvas_size)) for star in range(args.stars_count)
     ]
     fire_coroutine = fire(canvas, rocket_position, rows_speed=-1)
     while True:
@@ -204,7 +211,7 @@ def draw(canvas, args):
         except StopIteration:
             break
 
-    for rocket in cycle((rocket_1, rocket_2)):
+    for rocket in cycle(rocket_frames):
         canvas.border()
         for coroutine in stars_coroutines.copy():
             coroutine.send(None)
