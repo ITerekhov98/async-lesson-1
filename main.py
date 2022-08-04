@@ -194,7 +194,7 @@ def get_rocket_frames():
     return rocket_frames
 
 
-def rocket_animation(
+def animate_spaceship(
     canvas,
     rocket,
     rocket_position,
@@ -230,23 +230,17 @@ def draw(canvas, args):
         offset_ticks = random.randint(1, 10)   
         coroutines.append(
             blink(canvas, offset_ticks, *get_star_params(canvas_size))
-        ) 
-
-    while True:
-        try:
-            coroutines[0].send(None)
-            canvas.refresh()
-            time.sleep(TIC_TIMEOUT)
-        except StopIteration:
-            coroutines.pop(0)
-            break
+        )
 
     for rocket in cycle(rocket_frames):
         canvas.border()
         for coroutine in coroutines.copy():
-            coroutine.send(None)
+            try:
+                coroutine.send(None)
+            except StopIteration:
+                coroutines.remove(coroutine)
 
-        rocket_position = rocket_animation(
+        rocket_position = animate_spaceship(
             canvas,
             rocket,
             rocket_position,
@@ -254,6 +248,7 @@ def draw(canvas, args):
             canvas_size,
             args.rocket_speed
         )
+
 
 
 if __name__ == '__main__':
