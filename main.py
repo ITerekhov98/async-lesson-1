@@ -16,6 +16,7 @@ UP_KEY_CODE = 259
 DOWN_KEY_CODE = 258
 CANVAS_FRAME_THICKNESS = 2
 
+
 def read_controls(canvas, rocket_speed):
     """Read keys pressed and returns tuple witl controls state."""
 
@@ -113,7 +114,8 @@ def get_star_params(canvas_size):
 
 
 def draw_frame(canvas, start_position, text, negative=False):
-    """Draw multiline text fragment on canvas, erase text instead of drawing if negative=True is specified."""
+    """Draw multiline text fragment on canvas,
+    erase text instead of drawing if negative=True is specified."""
 
     rows_number, columns_number = canvas.getmaxyx()
     start_row, start_column = start_position
@@ -146,7 +148,8 @@ def draw_frame(canvas, start_position, text, negative=False):
 
 
 def get_frame_size(text):
-    """Calculate size of multiline text fragment, return pair — number of rows and colums."""
+    """Calculate size of multiline text fragment,
+    return pair — number of rows and colums."""
 
     lines = text.splitlines()
     rows = len(lines)
@@ -154,7 +157,13 @@ def get_frame_size(text):
     return rows, columns
 
 
-def calculate_rocket_move(canvas, rocket_position, rocket_size, canvas_size, rocket_speed):
+def calculate_rocket_move(
+        canvas,
+        rocket_position,
+        rocket_size,
+        canvas_size,
+        rocket_speed):
+
     rocket_rows_position, rocket_columns_position = rocket_position
     rocket_row_size, rocket_column_size = rocket_size
     rows_number, columns_number = canvas_size
@@ -194,27 +203,28 @@ def get_rocket_frames():
     return rocket_frames
 
 
-def animate_spaceship(
-    canvas,
-    rocket,
-    rocket_position,
-    rocket_size,
-    canvas_size,
-    rocket_speed):
-    
-    rocket_position = calculate_rocket_move(
+async def animate_spaceship(
+        canvas,
+        rocket_frames,
+        rocket_position,
+        rocket_size,
+        canvas_size,
+        rocket_speed):
+
+    for rocket in cycle(rocket_frames):
+        rocket_position = calculate_rocket_move(
             canvas,
             rocket_position,
             rocket_size,
             canvas_size,
             rocket_speed
         )
-    draw_frame(canvas, rocket_position, rocket)
-    canvas.refresh()
-    time.sleep(TIC_TIMEOUT)
-    draw_frame(canvas, rocket_position, rocket, negative=True)
-    return rocket_position
-    
+        draw_frame(canvas, rocket_position, rocket)
+        canvas.refresh()
+        time.sleep(TIC_TIMEOUT)
+        draw_frame(canvas, rocket_position, rocket, negative=True)
+        await asyncio.sleep(0)
+
 
 def draw(canvas, args):
     rocket_frames = get_rocket_frames()
@@ -226,29 +236,27 @@ def draw(canvas, args):
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
     coroutines = [fire(canvas, rocket_position, rows_speed=-1)]
-    for star in range(args.stars_count):  
-        offset_ticks = random.randint(1, 10)   
+    for star in range(args.stars_count):
+        offset_ticks = random.randint(1, 10)
         coroutines.append(
             blink(canvas, offset_ticks, *get_star_params(canvas_size))
         )
-
-    for rocket in cycle(rocket_frames):
+    coroutines.append(
+        animate_spaceship(
+            canvas,
+            rocket_frames,
+            rocket_position,
+            rocket_size,
+            canvas_size,
+            args.rocket_speed)
+    )
+    while True:
         canvas.border()
         for coroutine in coroutines.copy():
             try:
                 coroutine.send(None)
             except StopIteration:
                 coroutines.remove(coroutine)
-
-        rocket_position = animate_spaceship(
-            canvas,
-            rocket,
-            rocket_position,
-            rocket_size,
-            canvas_size,
-            args.rocket_speed
-        )
-
 
 
 if __name__ == '__main__':
