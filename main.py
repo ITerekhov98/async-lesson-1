@@ -54,10 +54,10 @@ async def fire(canvas, fire_position, rows_speed=-0.3, columns_speed=0):
     row, column = fire_position
 
     canvas.addstr(round(row), round(column), '*')
-    await asyncio.sleep(0)
+    await sleep(1)
 
     canvas.addstr(round(row), round(column), 'O')
-    await asyncio.sleep(0)
+    await sleep(1)
     canvas.addstr(round(row), round(column), ' ')
 
     row += rows_speed
@@ -72,31 +72,27 @@ async def fire(canvas, fire_position, rows_speed=-0.3, columns_speed=0):
 
     while 0 < row < max_row and 0 < column < max_column:
         canvas.addstr(round(row), round(column), symbol)
-        await asyncio.sleep(0)
+        await sleep(1)
         canvas.addstr(round(row), round(column), ' ')
         row += rows_speed
         column += columns_speed
 
 
 async def blink(canvas, offset_tics, row, column, symbol='*'):
-    for _ in range(offset_tics):
-        await asyncio.sleep(0)
+    await sleep(offset_tics)
+
     while True:
         canvas.addstr(row, column, symbol, curses.A_DIM)
-        for _ in range(20):
-            await asyncio.sleep(0)
+        await sleep(20)
 
         canvas.addstr(row, column, symbol)
-        for _ in range(3):
-            await asyncio.sleep(0)
+        await sleep(3)
 
         canvas.addstr(row, column, symbol, curses.A_BOLD)
-        for _ in range(5):
-            await asyncio.sleep(0)
+        await sleep(5)
 
         canvas.addstr(row, column, symbol)
-        for _ in range(3):
-            await asyncio.sleep(0)
+        await sleep(3)
 
 
 def get_star_params(canvas_size):
@@ -203,6 +199,11 @@ def get_rocket_frames():
     return rocket_frames
 
 
+async def sleep(ticks=1):
+    for _ in range(ticks):
+        await asyncio.sleep(0)
+
+
 async def animate_spaceship(
         canvas,
         rocket_frames,
@@ -220,10 +221,8 @@ async def animate_spaceship(
             rocket_speed
         )
         draw_frame(canvas, rocket_position, rocket)
-        canvas.refresh()
-        time.sleep(TIC_TIMEOUT)
+        await sleep(1)
         draw_frame(canvas, rocket_position, rocket, negative=True)
-        await asyncio.sleep(0)
 
 
 def draw(canvas, args):
@@ -257,7 +256,9 @@ def draw(canvas, args):
                 coroutine.send(None)
             except StopIteration:
                 coroutines.remove(coroutine)
-
+        canvas.refresh()
+        time.sleep(TIC_TIMEOUT)
+            
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
