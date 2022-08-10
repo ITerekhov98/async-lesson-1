@@ -14,7 +14,9 @@ from additional_functions import (
     get_garbage_delay_tics,
     get_frames,
     TIC_TIMEOUT,
-    PHRASES
+    PHRASES,
+    START_GAME_YEAR,
+    START_SHOOT_YEAR
 
 )
 
@@ -209,7 +211,7 @@ async def animate_spaceship(
             rocket_position[1] + (rocket_size[1] // 2)
         )
 
-        if space_pressed:
+        if space_pressed and year >= START_SHOOT_YEAR:
             coroutines.append(fire(canvas, gun_position))
         await sleep(1)
         draw_frame(canvas, rocket_position, rocket, negative=True)
@@ -313,7 +315,7 @@ def draw(canvas, args):
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
     global year
-    year = 1957
+    year = START_GAME_YEAR
 
     global obstacles
     obstacles = []
