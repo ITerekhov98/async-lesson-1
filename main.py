@@ -47,7 +47,7 @@ def read_controls(canvas, rocket_speed):
         if pressed_key_code == SPACE_KEY_CODE:
             space_pressed = True
 
-    return rows_direction, columns_direction
+    return rows_direction, columns_direction, space_pressed
 
 
 async def fire(canvas, fire_position, rows_speed=-0.3, columns_speed=0):
@@ -160,18 +160,18 @@ def clip_rocket_position(position, min_position, max_position):
     return max(min(max_position, position), min_position)
 
 def calculate_rocket_move(
-        canvas,
         rocket_position,
         rocket_size,
         canvas_size,
-        rocket_speed,
         row_speed,
-        column_speed):
+        column_speed,
+        rows_direction,
+        columns_direction):
 
     rocket_rows_position, rocket_columns_position = rocket_position
     rocket_row_size, rocket_column_size = rocket_size
     rows_number, columns_number = canvas_size
-    rows_direction, columns_direction = read_controls(canvas, rocket_speed)
+    
 
     row_speed, column_speed = update_speed(row_speed, column_speed, rows_direction, columns_direction)
     rocket_rows_position += row_speed
@@ -213,18 +213,24 @@ async def animate_spaceship(
         rocket_size,
         canvas_size,
         rocket_speed):
+
     row_speed = column_speed = 0
     for rocket in cycle(rocket_frames):
+        rows_direction, columns_direction, space_pressed = read_controls(canvas, rocket_speed)
         rocket_position, row_speed, column_speed = calculate_rocket_move(
-            canvas,
             rocket_position,
             rocket_size,
             canvas_size,
-            rocket_speed,
             row_speed,
-            column_speed
+            column_speed,
+            rows_direction,
+            columns_direction
         )
         draw_frame(canvas, rocket_position, rocket)
+        gun_position = (rocket_position[0], rocket_position[1] + (rocket_size[1] // 2))
+        
+        if space_pressed:
+            coroutines.append(fire(canvas, gun_position))
         await sleep(1)
         draw_frame(canvas, rocket_position, rocket, negative=True)
 
