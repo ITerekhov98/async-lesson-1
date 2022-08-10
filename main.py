@@ -7,6 +7,8 @@ import random
 
 from itertools import cycle
 
+from physics import update_speed
+
 
 TIC_TIMEOUT = 0.1
 SPACE_KEY_CODE = 32
@@ -31,16 +33,16 @@ def read_controls(canvas, rocket_speed):
             break
 
         if pressed_key_code == UP_KEY_CODE:
-            rows_direction = -rocket_speed
+            rows_direction = -1
 
         if pressed_key_code == DOWN_KEY_CODE:
-            rows_direction = rocket_speed
+            rows_direction = 1
 
         if pressed_key_code == RIGHT_KEY_CODE:
-            columns_direction = rocket_speed
+            columns_direction = 1
 
         if pressed_key_code == LEFT_KEY_CODE:
-            columns_direction = -rocket_speed
+            columns_direction = -1
 
         if pressed_key_code == SPACE_KEY_CODE:
             space_pressed = True
@@ -153,41 +155,32 @@ def get_frame_size(text):
     return rows, columns
 
 
+def clip_rocket_position(position, min_position, max_position):
+    '''does not allow the rocket to take off outside the canvas'''
+    return max(min(max_position, position), min_position)
+
 def calculate_rocket_move(
         canvas,
         rocket_position,
         rocket_size,
         canvas_size,
-        rocket_speed):
+        rocket_speed,
+        row_speed,
+        column_speed):
 
     rocket_rows_position, rocket_columns_position = rocket_position
     rocket_row_size, rocket_column_size = rocket_size
     rows_number, columns_number = canvas_size
     rows_direction, columns_direction = read_controls(canvas, rocket_speed)
 
-    if columns_direction < 0:
-        rocket_columns_position = max(
-            0,
-            rocket_columns_position + columns_direction
-        )
-    elif columns_direction > 0:
-        rocket_columns_position = min(
-            columns_number - rocket_column_size,
-            rocket_columns_position + columns_direction
-        )
+    row_speed, column_speed = update_speed(row_speed, column_speed, rows_direction, columns_direction)
+    rocket_rows_position += row_speed
+    rocket_columns_position += column_speed
 
-    if rows_direction < 0:
-        rocket_rows_position = max(
-            0,
-            rocket_rows_position + rows_direction
-        )
-    elif rows_direction > 0:
-        rocket_rows_position = min(
-            rows_number - rocket_row_size,
-            rocket_rows_position + rows_direction
-        )
+    rocket_columns_position = clip_rocket_position(rocket_columns_position, 0, (columns_number - rocket_column_size))
+    rocket_rows_position = clip_rocket_position(rocket_rows_position, 0, (rows_number - rocket_row_size))
 
-    return rocket_rows_position, rocket_columns_position
+    return (rocket_rows_position, rocket_columns_position), row_speed, column_speed
 
 
 def get_rocket_frames():
@@ -197,6 +190,15 @@ def get_rocket_frames():
             rocket = f.read()
             rocket_frames.extend((rocket, rocket))
     return rocket_frames
+
+
+def get_garbage_frames():
+    garbage_frames = []
+    for garbage in os.listdir('garbage'):
+        with open(f'garbage/{garbage}', 'r') as f:
+            frame = f.read()
+            garbage_frames.append(frame)
+    return garbage_frames
 
 
 async def sleep(ticks=1):
@@ -211,22 +213,51 @@ async def animate_spaceship(
         rocket_size,
         canvas_size,
         rocket_speed):
-
+    row_speed = column_speed = 0
     for rocket in cycle(rocket_frames):
-        rocket_position = calculate_rocket_move(
+        rocket_position, row_speed, column_speed = calculate_rocket_move(
             canvas,
             rocket_position,
             rocket_size,
             canvas_size,
-            rocket_speed
+            rocket_speed,
+            row_speed,
+            column_speed
         )
         draw_frame(canvas, rocket_position, rocket)
         await sleep(1)
         draw_frame(canvas, rocket_position, rocket, negative=True)
 
 
+async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
+    """Animate garbage, flying from top to bottom. Сolumn position will stay same, as specified on start."""
+    rows_number, columns_number = canvas.getmaxyx()
+
+    column = max(column, 0)
+    column = min(column, columns_number - 1)
+
+    row = 0
+
+    while row < rows_number:
+        draw_frame(canvas, (row, column), garbage_frame)
+        await asyncio.sleep(0)
+        draw_frame(canvas, (row, column), garbage_frame, negative=True)
+        row += speed
+
+
+async def fill_orbit_with_garbage(canvas, canvas_row_size):
+    garbage_frames = get_garbage_frames()
+    for garbage in cycle(garbage_frames):
+        frame_rows = garbage.split('\n')
+        row_limit = canvas_row_size - max(len(row) for row in frame_rows)
+        column = random.randint(1, row_limit)
+        coroutines.append(fly_garbage(canvas, column, garbage))
+        await sleep(15)
+
+
 def draw(canvas, args):
     rocket_frames = get_rocket_frames()
+    
     rocket_size = get_frame_size(rocket_frames[0])
     canvas_size = canvas.getmaxyx()
     canvas.border()
@@ -234,12 +265,14 @@ def draw(canvas, args):
     curses.curs_set(False)
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
+    global coroutines
     coroutines = [fire(canvas, rocket_position, rows_speed=-1)]
     for star in range(args.stars_count):
         offset_ticks = random.randint(1, 10)
         coroutines.append(
             blink(canvas, offset_ticks, *get_star_params(canvas_size))
         )
+    coroutines.append(fill_orbit_with_garbage(canvas, canvas_size[1]))
     coroutines.append(
         animate_spaceship(
             canvas,
