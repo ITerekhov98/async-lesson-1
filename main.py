@@ -8,7 +8,33 @@ import random
 from itertools import cycle
 
 from physics import update_speed
+from curses_tools import get_frame_size, draw_frame
 
+EXPLOSION_FRAMES = [
+    """\
+           (_)
+       (  (   (  (
+      () (  (  )
+        ( )  ()
+    """,
+    """\
+           (_)
+       (  (   (
+         (  (  )
+          )  (
+    """,
+    """\
+            (
+          (   (
+         (     (
+          )  (
+    """,
+    """\
+            (
+              (
+            (
+    """,
+]
 
 TIC_TIMEOUT = 0.1
 SPACE_KEY_CODE = 32
@@ -18,6 +44,91 @@ UP_KEY_CODE = 259
 DOWN_KEY_CODE = 258
 CANVAS_FRAME_THICKNESS = 2
 
+
+class Obstacle:
+    
+    def __init__(self, row, column, rows_size=1, columns_size=1, uid=None):
+        self.row = row
+        self.column = column
+        self.rows_size = rows_size
+        self.columns_size = columns_size
+        self.uid = uid
+    
+    def get_bounding_box_frame(self):
+        # increment box size to compensate obstacle movement
+        rows, columns = self.rows_size + 1, self.columns_size + 1
+        return '\n'.join(_get_bounding_box_lines(rows, columns))
+   
+    def get_bounding_box_corner_pos(self):
+        return self.row - 1, self.column - 1
+   
+    def dump_bounding_box(self):
+        row, column = self.get_bounding_box_corner_pos()
+        return row, column, self.get_bounding_box_frame()
+        
+    def has_collision(self, obj_corner_row, obj_corner_column, obj_size_rows=1, obj_size_columns=1):
+        '''Determine if collision has occured. Return True or False.'''
+        return has_collision(
+            (self.row, self.column),
+            (self.rows_size, self.columns_size),
+            (obj_corner_row, obj_corner_column),
+            (obj_size_rows, obj_size_columns),
+        )
+
+
+def _get_bounding_box_lines(rows, columns):
+
+    yield ' ' + '-' * columns + ' '
+    for _ in range(rows):
+        yield '|' + ' ' * columns + '|'
+    yield ' ' + '-' * columns + ' '
+
+
+async def show_obstacles(canvas, obstacles):
+    """Display bounding boxes of every obstacle in a list"""
+    
+    while True:
+        boxes = []
+
+        for obstacle in obstacles:
+            boxes.append(obstacle.dump_bounding_box())
+        
+        for row, column, frame in boxes:
+            draw_frame(canvas, (row, column), frame)
+
+        await asyncio.sleep(0)
+
+        for row, column, frame in boxes:
+            draw_frame(canvas, (row, column), frame, negative=True)
+
+
+def _is_point_inside(corner_row, corner_column, size_rows, size_columns, point_row, point_row_column):
+    rows_flag = corner_row <= point_row < corner_row + size_rows
+    columns_flag = corner_column <= point_row_column < corner_column + size_columns
+
+    return rows_flag and columns_flag
+
+
+def has_collision(obstacle_corner, obstacle_size, obj_corner, obj_size=(1, 1)):
+    '''Determine if collision has occured. Return True or False.'''
+
+    opposite_obstacle_corner = (
+        obstacle_corner[0] + obstacle_size[0] - 1,
+        obstacle_corner[1] + obstacle_size[1] - 1,
+    )
+
+    opposite_obj_corner = (
+        obj_corner[0] + obj_size[0] - 1,
+        obj_corner[1] + obj_size[1] - 1,
+    )
+
+    return any([
+        _is_point_inside(*obstacle_corner, *obstacle_size, *obj_corner),
+        _is_point_inside(*obstacle_corner, *obstacle_size, *opposite_obj_corner),
+
+        _is_point_inside(*obj_corner, *obj_size, *obstacle_corner),
+        _is_point_inside(*obj_corner, *obj_size, *opposite_obstacle_corner),
+    ])
 
 def read_controls(canvas, rocket_speed):
     """Read keys pressed and returns tuple witl controls state."""
@@ -76,8 +187,27 @@ async def fire(canvas, fire_position, rows_speed=-0.3, columns_speed=0):
         canvas.addstr(round(row), round(column), symbol)
         await sleep(1)
         canvas.addstr(round(row), round(column), ' ')
+        for obstacle in obstacles:
+            if obstacle.has_collision(row, column):
+                obstacles_in_last_collisions.append(obstacle)
+                return
         row += rows_speed
         column += columns_speed
+
+
+async def explode(canvas, center_row, center_column):
+    rows, columns = get_frame_size(EXPLOSION_FRAMES[0])
+    corner_row = center_row - rows / 2
+    corner_column = center_column - columns / 2
+
+    curses.beep()
+    for frame in EXPLOSION_FRAMES:
+
+        draw_frame(canvas, (corner_row, corner_column), frame)
+
+        await asyncio.sleep(0)
+        draw_frame(canvas, (corner_row, corner_column), frame, negative=True)
+        await asyncio.sleep(0)
 
 
 async def blink(canvas, offset_tics, row, column, symbol='*'):
@@ -109,50 +239,6 @@ def get_star_params(canvas_size):
     )
     symbol = random.choice(['*', '.', ':', '+'])
     return y, x, symbol
-
-
-def draw_frame(canvas, start_position, text, negative=False):
-    """Draw multiline text fragment on canvas,
-    erase text instead of drawing if negative=True is specified."""
-
-    rows_number, columns_number = canvas.getmaxyx()
-    start_row, start_column = start_position
-
-    for row, line in enumerate(text.splitlines(), round(start_row)):
-        if row < 0:
-            continue
-
-        if row >= rows_number:
-            break
-
-        for column, symbol in enumerate(line, round(start_column)):
-            if column < 0:
-                continue
-
-            if column >= columns_number:
-                break
-
-            if symbol == ' ':
-                continue
-
-            # Check that current position it is not in a lower right corner of the window
-            # Curses will raise exception in that case. Don`t ask why…
-            # https://docs.python.org/3/library/curses.html#curses.window.addch
-            if row == rows_number - 1 and column == columns_number - 1:
-                continue
-
-            symbol = symbol if not negative else ' '
-            canvas.addch(row, column, symbol)
-
-
-def get_frame_size(text):
-    """Calculate size of multiline text fragment,
-    return pair — number of rows and colums."""
-
-    lines = text.splitlines()
-    rows = len(lines)
-    columns = max([len(line) for line in lines])
-    return rows, columns
 
 
 def clip_rocket_position(position, min_position, max_position):
@@ -235,6 +321,7 @@ async def animate_spaceship(
         draw_frame(canvas, rocket_position, rocket, negative=True)
 
 
+
 async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
     """Animate garbage, flying from top to bottom. Сolumn position will stay same, as specified on start."""
     rows_number, columns_number = canvas.getmaxyx()
@@ -243,12 +330,23 @@ async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
     column = min(column, columns_number - 1)
 
     row = 0
-
+    row_size, column_size = get_frame_size(garbage_frame)
     while row < rows_number:
+        obstacle = Obstacle(row, column, row_size, column_size)
+        obstacles.append(obstacle)
+
         draw_frame(canvas, (row, column), garbage_frame)
         await asyncio.sleep(0)
         draw_frame(canvas, (row, column), garbage_frame, negative=True)
+        obstacles.remove(obstacle)
+        if obstacle in obstacles_in_last_collisions:
+            center_row = (row * 2 + row_size) // 2
+            center_column = (column * 2 + column_size) // 2
+            coroutines.append(explode(canvas, center_row, center_column))
+            return
+        
         row += speed
+
 
 
 async def fill_orbit_with_garbage(canvas, canvas_row_size):
@@ -261,6 +359,8 @@ async def fill_orbit_with_garbage(canvas, canvas_row_size):
         await sleep(15)
 
 
+
+
 def draw(canvas, args):
     rocket_frames = get_rocket_frames()
     
@@ -271,6 +371,11 @@ def draw(canvas, args):
     curses.curs_set(False)
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
+
+    global obstacles 
+    obstacles = []
+    global obstacles_in_last_collisions
+    obstacles_in_last_collisions = []
     global coroutines
     coroutines = [fire(canvas, rocket_position, rows_speed=-1)]
     for star in range(args.stars_count):
@@ -288,6 +393,7 @@ def draw(canvas, args):
             canvas_size,
             args.rocket_speed)
     )
+    coroutines.append(show_obstacles(canvas, obstacles))
     while True:
         canvas.border()
         for coroutine in coroutines.copy():
