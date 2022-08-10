@@ -368,13 +368,75 @@ async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
 
 async def fill_orbit_with_garbage(canvas, canvas_row_size, garbage_frames):
     for garbage in cycle(garbage_frames):
+        delay = get_garbage_delay_tics(year)
+        if not delay:
+            await sleep(1)
+            continue
+
         frame_rows = garbage.split('\n')
         row_limit = canvas_row_size - max(len(row) for row in frame_rows)
         column = random.randint(1, row_limit)
         coroutines.append(fly_garbage(canvas, column, garbage))
+        await sleep(delay)
+
+
+
+def get_garbage_delay_tics(year):
+    if year < 1961:
+        return None
+    elif year < 1969:
+        return 20
+    elif year < 1981:
+        return 14
+    elif year < 1995:
+        return 10
+    elif year < 2010:
+        return 8
+    elif year < 2020:
+        return 6
+    else:
+        return 2
+
+
+async def change_year():
+    global year
+    while True:
         await sleep(15)
+        year += 1
+
+PHRASES = {
+    # Только на английском, Repl.it ломается на кириллице
+    1957: "First Sputnik",
+    1961: "Gagarin flew!",
+    1969: "Armstrong got on the moon!",
+    1971: "First orbital space station Salute-1",
+    1981: "Flight of the Shuttle Columbia",
+    1998: 'ISS start building',
+    2011: 'Messenger launch to Mercury',
+    2020: "Take the plasma gun! Shoot the garbage!",
+}
 
 
+async def draw_info_panel(canvas):
+    current_year_info = ''
+    year_area_position = (1,2)
+    year_area_size = (4,6)
+    year_info_position = (2,9) 
+    while True:
+        year_area = canvas.derwin(
+            *year_area_size,
+            *year_area_position
+        )
+        year_area.border()
+        year_area.addstr(1, 1, f'YEAR')
+        year_area.addstr(2, 1, str(year))
+        if year in PHRASES.keys():
+            current_year_info = PHRASES[year]
+        year_info_area = canvas.derwin(
+            *year_info_position
+        )
+        year_info_area.addstr(current_year_info)
+        await sleep(1)
 
 
 def draw(canvas, args):
@@ -387,14 +449,21 @@ def draw(canvas, args):
     curses.curs_set(False)
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
+    global year
+    year = 1957
+
     global game_over_tag
     game_over_tag = get_game_over_tag()
+    
     global obstacles 
     obstacles = []
+    
     global obstacles_in_last_collisions
     obstacles_in_last_collisions = []
+    
     global coroutines
     coroutines = [fire(canvas, rocket_position, rows_speed=-1)]
+    
     for star in range(args.stars_count):
         offset_ticks = random.randint(1, 10)
         coroutines.append(
@@ -411,6 +480,8 @@ def draw(canvas, args):
             args.rocket_speed)
     )
     coroutines.append(show_obstacles(canvas, obstacles))
+    coroutines.append(change_year())
+    coroutines.append(draw_info_panel(canvas))
     while True:
         canvas.border()
         for coroutine in coroutines.copy():
