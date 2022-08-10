@@ -287,6 +287,11 @@ def get_garbage_frames():
     return garbage_frames
 
 
+def get_game_over_tag():
+    with open('gameover.txt', 'r') as f:
+        tag = f.read()
+    return tag
+
 async def sleep(ticks=1):
     for _ in range(ticks):
         await asyncio.sleep(0)
@@ -319,7 +324,19 @@ async def animate_spaceship(
             coroutines.append(fire(canvas, gun_position))
         await sleep(1)
         draw_frame(canvas, rocket_position, rocket, negative=True)
+        for obstacle in obstacles:
+            if obstacle.has_collision(*rocket_position):
+                coroutines.append(show_gameover(canvas, canvas_size))
+                return
 
+async def show_gameover(canvas, canvas_size):
+    row_center, column_center = (dim//2 for dim in canvas_size)
+    row_size, column_size = get_frame_size(game_over_tag)
+    row = row_center - row_size // 2
+    column = column_center - column_size // 2
+    while True:
+        draw_frame(canvas, (row, column), game_over_tag)
+        await sleep(1)
 
 
 async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
@@ -349,8 +366,7 @@ async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
 
 
 
-async def fill_orbit_with_garbage(canvas, canvas_row_size):
-    garbage_frames = get_garbage_frames()
+async def fill_orbit_with_garbage(canvas, canvas_row_size, garbage_frames):
     for garbage in cycle(garbage_frames):
         frame_rows = garbage.split('\n')
         row_limit = canvas_row_size - max(len(row) for row in frame_rows)
@@ -363,7 +379,7 @@ async def fill_orbit_with_garbage(canvas, canvas_row_size):
 
 def draw(canvas, args):
     rocket_frames = get_rocket_frames()
-    
+    garbage_frames = get_garbage_frames()
     rocket_size = get_frame_size(rocket_frames[0])
     canvas_size = canvas.getmaxyx()
     canvas.border()
@@ -371,7 +387,8 @@ def draw(canvas, args):
     curses.curs_set(False)
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
-
+    global game_over_tag
+    game_over_tag = get_game_over_tag()
     global obstacles 
     obstacles = []
     global obstacles_in_last_collisions
@@ -383,7 +400,7 @@ def draw(canvas, args):
         coroutines.append(
             blink(canvas, offset_ticks, *get_star_params(canvas_size))
         )
-    coroutines.append(fill_orbit_with_garbage(canvas, canvas_size[1]))
+    coroutines.append(fill_orbit_with_garbage(canvas, canvas_size[1], garbage_frames))
     coroutines.append(
         animate_spaceship(
             canvas,
