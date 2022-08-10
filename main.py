@@ -7,8 +7,18 @@ import random
 
 from itertools import cycle
 
-from physics import update_speed
 from curses_tools import get_frame_size, draw_frame
+from additional_functions import (
+    read_controls,
+    calculate_rocket_move,
+    get_star_params,
+    get_garbage_delay_tics,
+    get_frames,
+    TIC_TIMEOUT,
+    PHRASES
+
+)
+
 
 EXPLOSION_FRAMES = [
     """\
@@ -35,14 +45,6 @@ EXPLOSION_FRAMES = [
             (
     """,
 ]
-
-TIC_TIMEOUT = 0.1
-SPACE_KEY_CODE = 32
-LEFT_KEY_CODE = 260
-RIGHT_KEY_CODE = 261
-UP_KEY_CODE = 259
-DOWN_KEY_CODE = 258
-CANVAS_FRAME_THICKNESS = 2
 
 
 class Obstacle:
@@ -84,24 +86,6 @@ def _get_bounding_box_lines(rows, columns):
     yield ' ' + '-' * columns + ' '
 
 
-async def show_obstacles(canvas, obstacles):
-    """Display bounding boxes of every obstacle in a list"""
-    
-    while True:
-        boxes = []
-
-        for obstacle in obstacles:
-            boxes.append(obstacle.dump_bounding_box())
-        
-        for row, column, frame in boxes:
-            draw_frame(canvas, (row, column), frame)
-
-        await asyncio.sleep(0)
-
-        for row, column, frame in boxes:
-            draw_frame(canvas, (row, column), frame, negative=True)
-
-
 def _is_point_inside(corner_row, corner_column, size_rows, size_columns, point_row, point_row_column):
     rows_flag = corner_row <= point_row < corner_row + size_rows
     columns_flag = corner_column <= point_row_column < corner_column + size_columns
@@ -130,35 +114,23 @@ def has_collision(obstacle_corner, obstacle_size, obj_corner, obj_size=(1, 1)):
         _is_point_inside(*obj_corner, *obj_size, *opposite_obstacle_corner),
     ])
 
-def read_controls(canvas, rocket_speed):
-    """Read keys pressed and returns tuple witl controls state."""
 
-    rows_direction = columns_direction = 0
-    space_pressed = False
-
+async def show_obstacles(canvas, obstacles):
+    """Display bounding boxes of every obstacle in a list"""
+    
     while True:
-        pressed_key_code = canvas.getch()
+        boxes = []
 
-        if pressed_key_code == -1:
-            # https://docs.python.org/3/library/curses.html#curses.window.getch
-            break
+        for obstacle in obstacles:
+            boxes.append(obstacle.dump_bounding_box())
+        
+        for row, column, frame in boxes:
+            draw_frame(canvas, (row, column), frame)
 
-        if pressed_key_code == UP_KEY_CODE:
-            rows_direction = -1
+        await asyncio.sleep(0)
 
-        if pressed_key_code == DOWN_KEY_CODE:
-            rows_direction = 1
-
-        if pressed_key_code == RIGHT_KEY_CODE:
-            columns_direction = 1
-
-        if pressed_key_code == LEFT_KEY_CODE:
-            columns_direction = -1
-
-        if pressed_key_code == SPACE_KEY_CODE:
-            space_pressed = True
-
-    return rows_direction, columns_direction, space_pressed
+        for row, column, frame in boxes:
+            draw_frame(canvas, (row, column), frame, negative=True)
 
 
 async def fire(canvas, fire_position, rows_speed=-0.3, columns_speed=0):
@@ -227,70 +199,6 @@ async def blink(canvas, offset_tics, row, column, symbol='*'):
         await sleep(3)
 
 
-def get_star_params(canvas_size):
-    rows_number, columns_number = canvas_size
-    x = random.randint(
-        CANVAS_FRAME_THICKNESS,
-        columns_number-CANVAS_FRAME_THICKNESS
-    )
-    y = random.randint(
-        CANVAS_FRAME_THICKNESS,
-        rows_number-CANVAS_FRAME_THICKNESS
-    )
-    symbol = random.choice(['*', '.', ':', '+'])
-    return y, x, symbol
-
-
-def clip_rocket_position(position, min_position, max_position):
-    '''does not allow the rocket to take off outside the canvas'''
-    return max(min(max_position, position), min_position)
-
-def calculate_rocket_move(
-        rocket_position,
-        rocket_size,
-        canvas_size,
-        row_speed,
-        column_speed,
-        rows_direction,
-        columns_direction):
-
-    rocket_rows_position, rocket_columns_position = rocket_position
-    rocket_row_size, rocket_column_size = rocket_size
-    rows_number, columns_number = canvas_size
-    
-
-    row_speed, column_speed = update_speed(row_speed, column_speed, rows_direction, columns_direction)
-    rocket_rows_position += row_speed
-    rocket_columns_position += column_speed
-
-    rocket_columns_position = clip_rocket_position(rocket_columns_position, 0, (columns_number - rocket_column_size))
-    rocket_rows_position = clip_rocket_position(rocket_rows_position, 0, (rows_number - rocket_row_size))
-
-    return (rocket_rows_position, rocket_columns_position), row_speed, column_speed
-
-
-def get_rocket_frames():
-    rocket_frames = []
-    for rocket in os.listdir('rocket'):
-        with open(f'rocket/{rocket}', 'r') as f:
-            rocket = f.read()
-            rocket_frames.extend((rocket, rocket))
-    return rocket_frames
-
-
-def get_garbage_frames():
-    garbage_frames = []
-    for garbage in os.listdir('garbage'):
-        with open(f'garbage/{garbage}', 'r') as f:
-            frame = f.read()
-            garbage_frames.append(frame)
-    return garbage_frames
-
-
-def get_game_over_tag():
-    with open('gameover.txt', 'r') as f:
-        tag = f.read()
-    return tag
 
 async def sleep(ticks=1):
     for _ in range(ticks):
@@ -303,7 +211,8 @@ async def animate_spaceship(
         rocket_position,
         rocket_size,
         canvas_size,
-        rocket_speed):
+        rocket_speed,
+        game_over_tag):
 
     row_speed = column_speed = 0
     for rocket in cycle(rocket_frames):
@@ -326,10 +235,11 @@ async def animate_spaceship(
         draw_frame(canvas, rocket_position, rocket, negative=True)
         for obstacle in obstacles:
             if obstacle.has_collision(*rocket_position):
-                coroutines.append(show_gameover(canvas, canvas_size))
+                coroutines.append(show_gameover(canvas, canvas_size, game_over_tag))
                 return
 
-async def show_gameover(canvas, canvas_size):
+
+async def show_gameover(canvas, canvas_size, game_over_tag):
     row_center, column_center = (dim//2 for dim in canvas_size)
     row_size, column_size = get_frame_size(game_over_tag)
     row = row_center - row_size // 2
@@ -380,41 +290,11 @@ async def fill_orbit_with_garbage(canvas, canvas_row_size, garbage_frames):
         await sleep(delay)
 
 
-
-def get_garbage_delay_tics(year):
-    if year < 1961:
-        return None
-    elif year < 1969:
-        return 20
-    elif year < 1981:
-        return 14
-    elif year < 1995:
-        return 10
-    elif year < 2010:
-        return 8
-    elif year < 2020:
-        return 6
-    else:
-        return 2
-
-
 async def change_year():
     global year
     while True:
         await sleep(15)
         year += 1
-
-PHRASES = {
-    # Только на английском, Repl.it ломается на кириллице
-    1957: "First Sputnik",
-    1961: "Gagarin flew!",
-    1969: "Armstrong got on the moon!",
-    1971: "First orbital space station Salute-1",
-    1981: "Flight of the Shuttle Columbia",
-    1998: 'ISS start building',
-    2011: 'Messenger launch to Mercury',
-    2020: "Take the plasma gun! Shoot the garbage!",
-}
 
 
 async def draw_info_panel(canvas):
@@ -440,8 +320,9 @@ async def draw_info_panel(canvas):
 
 
 def draw(canvas, args):
-    rocket_frames = get_rocket_frames()
-    garbage_frames = get_garbage_frames()
+    rocket_frames = get_frames('rocket')
+    garbage_frames = get_frames('garbage')
+    game_over_tag = get_frames('gameover')
     rocket_size = get_frame_size(rocket_frames[0])
     canvas_size = canvas.getmaxyx()
     canvas.border()
@@ -450,10 +331,7 @@ def draw(canvas, args):
 
     rocket_position = list(dimension//2 for dimension in canvas_size)
     global year
-    year = 1957
-
-    global game_over_tag
-    game_over_tag = get_game_over_tag()
+    year = 1957    
     
     global obstacles 
     obstacles = []
@@ -477,9 +355,9 @@ def draw(canvas, args):
             rocket_position,
             rocket_size,
             canvas_size,
-            args.rocket_speed)
+            args.rocket_speed,
+            game_over_tag)
     )
-    coroutines.append(show_obstacles(canvas, obstacles))
     coroutines.append(change_year())
     coroutines.append(draw_info_panel(canvas))
     while True:
